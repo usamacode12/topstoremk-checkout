@@ -2,64 +2,73 @@
 (function () {
   "use strict";
 
-  console.log("TopstoreMK: Country script v4 loaded");
+  console.log("TopstoreMK: Country script v5 loaded");
 
-  let checkoutTimer = null;
-  let checkoutToken = 0;
-  let updateInProgress = false;
+  let timer = null;
+  let updating = false;
+  let lastPath = "";
 
-  function selectCountry(token, attemptsLeft) {
-    if (token !== checkoutToken ||
+  function isCheckout() {
+    return window.location.pathname ===
+      "/products/checkout/payment";
+  }
+
+  function selectCountry() {
+    if (!isCheckout() || updating ||
         !window.Ecwid?.Cart?.get ||
-        !window.Ecwid?.Cart?.setAddress ||
-        updateInProgress) {
+        !window.Ecwid?.Cart?.setAddress) {
       return;
     }
 
     Ecwid.Cart.get(function (cart) {
-      if (token !== checkoutToken) return;
+      if (!isCheckout() || updating) return;
 
-      const country = cart.shippingPerson?.countryCode;
+      // Never overwrite an existing country.
+      if (cart.shippingPerson?.countryCode) return;
 
-      // Never overwrite a selected country.
-      if (country) return;
-
-      updateInProgress = true;
+      updating = true;
 
       Ecwid.Cart.setAddress(
         { countryCode: "MK" },
         function () {
-          updateInProgress = false;
+          updating = false;
           console.log("TopstoreMK: Macedonia selected");
         },
         function (error) {
-          updateInProgress = false;
+          updating = false;
           console.error("TopstoreMK country error:", error);
-
-          if (attemptsLeft > 1) {
-            checkoutTimer = setTimeout(function () {
-              selectCountry(token, attemptsLeft - 1);
-            }, 500);
-          }
         }
       );
     });
   }
 
+  function checkPage() {
+    if (!isCheckout()) {
+      lastPath = window.location.pathname;
+      return;
+    }
+
+    if (lastPath !== window.location.pathname) {
+      lastPath = window.location.pathname;
+
+      // Give checkout time to initialize.
+      setTimeout(selectCountry, 500);
+    }
+  }
+
   function initialize() {
-    Ecwid.OnPageLoaded.add(function (page) {
-      checkoutToken++;
-      clearTimeout(checkoutTimer);
+    checkPage();
 
-      if (page.type === "CHECKOUT_PAYMENT_DETAILS") {
-        const token = checkoutToken;
+    // Detect checkout navigation.
+    timer = setInterval(checkPage, 500);
 
-        // Allow Ecwid to initialize checkout fields.
-        checkoutTimer = setTimeout(function () {
-          selectCountry(token, 3);
-        }, 600);
-      }
-    });
+    if (window.Ecwid?.OnPageLoaded?.add) {
+      Ecwid.OnPageLoaded.add(function (page) {
+        if (page.type === "CHECKOUT_PAYMENT_DETAILS") {
+          setTimeout(selectCountry, 500);
+        }
+      });
+    }
   }
 
   if (window.Ecwid?.OnPageLoaded) {
