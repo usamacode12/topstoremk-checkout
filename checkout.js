@@ -2,39 +2,52 @@
 (function () {
   "use strict";
 
-  console.log("TopstoreMK: Country script v8 loaded");
+  console.log("TopstoreMK: Country script v9 loaded");
 
   var busy = false;
-  var completed = false;
+  var lastAttempt = 0;
 
-  function setDefaultCountry() {
-    if (busy || completed) return;
-    if (!window.Ecwid?.Cart?.get || !window.Ecwid?.Cart?.setAddress) return;
+  function ensureMacedonia() {
+    if (busy || !window.Ecwid?.Cart?.get ||
+        !window.Ecwid?.Cart?.setAddress) return;
 
+    if (Date.now() - lastAttempt < 1000) return;
+
+    lastAttempt = Date.now();
     busy = true;
 
     Ecwid.Cart.get(function (cart) {
-      if (cart.shippingPerson?.countryCode || cart.billingPerson?.countryCode) {
-        completed = true;
+      var shipping = cart.shippingPerson || {};
+
+      if (shipping.countryCode ||
+          cart.billingPerson?.countryCode) {
         busy = false;
         return;
       }
 
       Ecwid.Cart.setAddress(
-        { countryCode: "MK" },
+        { ...shipping, countryCode: "MK" },
         function () {
-          completed = true;
           busy = false;
-          console.log("TopstoreMK: Macedonia default applied");
+          console.log("TopstoreMK: Macedonia selected");
         },
         function (error) {
           busy = false;
-          console.error("TopstoreMK:", error);
+          console.error("TopstoreMK country error:", error);
         }
       );
     });
   }
 
-  setInterval(setDefaultCountry, 2000);
-  setDefaultCountry();
+  Ecwid.OnCartChanged.add(function () {
+    ensureMacedonia();
+  });
+
+  Ecwid.OnPageLoaded.add(function () {
+    ensureMacedonia();
+  });
+
+  setInterval(ensureMacedonia, 1000);
+
+  ensureMacedonia();
 })();
